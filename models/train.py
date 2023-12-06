@@ -23,7 +23,7 @@ class AddGaussianNoise(object):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
 
-def generate_positive_pairs(batch, indices, num_augmentations):
+def generate_positive_pairs(batch, indices, num_augmentations, print_transforms=False):
     # define a set of transformations that do not significantly alter
     # the visual content of the image (retrains visual features, positive associations)
     positive_transform_options = np.array([
@@ -32,7 +32,7 @@ def generate_positive_pairs(batch, indices, num_augmentations):
         transforms.RandomRotation(180),
         transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        AddGaussianNoise(0., 0.05)
+        AddGaussianNoise(0., 0.01)
     ])
     
     positive_pairs = []
@@ -42,15 +42,18 @@ def generate_positive_pairs(batch, indices, num_augmentations):
             np.random.choice(positive_transform_options, size=num_augmentations, replace=False)
         )
 
+        # for visualizations
+        if print_transforms:
+            print(random_transforms)
+
         unaltered_image = batch[idx]
-        # positive_associated_image = random_transforms(unaltered_image)
-        positive_associated_image = unaltered_image
+        positive_associated_image = random_transforms(unaltered_image)
         positive_pairs.append((unaltered_image, positive_associated_image))
     
     return positive_pairs
 
 
-def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
+def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset, print_transforms=False):
     # sample a new random image from the dataset and define a set of transformations 
     # that alter the image a little more drastically to build negative associations
 
@@ -62,7 +65,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
         transforms.RandomErasing(p=1.0, scale=(0.02, 0.1), ratio=(0.3, 3.3), value='random'),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
         transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.2)),
-        AddGaussianNoise(0., 0.05)
+        AddGaussianNoise(0., 0.01)
     ])
 
     negative_pairs = []
@@ -81,6 +84,10 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
         random_transforms = transforms.Compose(
             np.random.choice(negative_transform_options, size=num_augmentations, replace=False)
         )
+
+        # for visualizations
+        if print_transforms:
+            print(random_transforms)
 
         negative_associated_image = random_transforms(negative_associated_image).to(unaltered_image.device)
         negative_pairs.append((unaltered_image, negative_associated_image))
@@ -104,7 +111,7 @@ def early_stopping(current_loss, best_loss, threshold=0.01):
 
 
 def contrastive_loss(scoring_fn, output1, output2, target_labels, margin=1.0):
-    similarity_score = scoring_fn(output1, output2).mean(dim=1)
+    similarity_score = scoring_fn(output1, output2)
     loss = torch.mean((1 - target_labels) * torch.pow(similarity_score, 2) +
                       (target_labels) * torch.pow(torch.clamp(margin - similarity_score, min=0.0), 2))
     return similarity_score, loss
@@ -141,7 +148,7 @@ def test(model, test_loader, test_dataset, scoring_fn, device):
                 output2 = model(pair[1].unsqueeze(0))
                 score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels[i])
                 total_loss += loss
-                if (score < closest_score):
+                if (score > closest_score):
                     closest_score = score
                     closest_idx = i
         

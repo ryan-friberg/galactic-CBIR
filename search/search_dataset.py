@@ -22,12 +22,12 @@ class SearchDataset(Dataset):
         if extract_features:
             self.extract_and_save_features(model, associated_dataset)
         
-        self.image_dirs, self.tensor_files = self.get_filenames()
-        self.num_files = len(self.image_dirs)
+        self.image_files, self.tensor_files = self.get_filenames()
+        self.num_files = len(self.image_files)
 
     def __getitem__(self, idx):
-        dir = self.image_dirs[idx]
-        features = torch.load(self.tensor_files, map_location=self.device)
+        dir = self.image_files[idx]
+        features = torch.load(self.tensor_files[idx], map_location=self.device)
         return dir, features
 
     def __len__(self):
@@ -59,7 +59,7 @@ class SearchDataset(Dataset):
             i += 1
 
     def get_filenames(self):
-        image_dirs   = []
+        image_files   = []
         tensor_files = []
 
         pair_dirs = os.listdir(self.data_dir)
@@ -67,7 +67,7 @@ class SearchDataset(Dataset):
             dir = os.path.join(self.data_dir, dir)
             img_file = os.path.join(dir, 'img.jpg')
             features_file = os.path.join(dir, 'features.pt')
-            image_dirs.append(dir)
+            image_files.append(img_file)
             tensor_files.append(features_file)
 
-        return image_dirs, tensor_files
+        return image_files, tensor_files

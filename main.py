@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 import torch
 import torchvision.transforms as transforms
-from search.search import scoring_function, search, save_search_results
+from search.search import similarity_scoring_function, search, save_search_results
 from search.search_dataset import SearchDataset
 from torch.utils.data import DataLoader, random_split
 from data.dataset import GalaxyCBRDataSet, collate_fn
@@ -109,7 +109,7 @@ def main():
 
     print("===> Building optimizer...")
     optim = build_optim(args.optim, model, args.lr)
-    scoring_fn = scoring_function
+    scoring_fn = similarity_scoring_function
 
     start = 0
     best_loss = np.Inf
