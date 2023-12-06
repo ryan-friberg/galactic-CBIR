@@ -9,6 +9,12 @@ from data.dataset import GalaxyCBRDataSet, collate_fn
 from models.train import train, test
 from models.transformer_feature_extractor import FeatureExtractorViT
 
+'''
+This file is the centerpiece of the CBIR pipeline. With the arguments below, this file can create
+and/or load all the necessary components to train/test a machine learning model or run search. 
+'''
+
+
 # define CLI arugments, add more as needed
 parser = argparse.ArgumentParser(description='Content-based image retrieval pipeline')
 parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
@@ -35,6 +41,7 @@ parser.add_argument('--search_output', default='./search/results.txt', type=str,
 parser.add_argument('--k', default=3, type=int, help='number of search results to return')
 
 
+# create the model given CLI arguments (only really useful when more than one model type is available)
 def build_model(arch_name, batch_size=None):
     model = None
     default_checkpoint = None
@@ -45,6 +52,7 @@ def build_model(arch_name, batch_size=None):
     return model, default_checkpoint
 
 
+# build the corresponding optimizer based on what was requested via the CLI
 def build_optim(optim_name, model, lr):
     # pick the model from the arguments
     optim = None
@@ -66,6 +74,7 @@ def build_optim(optim_name, model, lr):
     return optim
 
 
+# search for a hardware accelerator, if available
 def determine_device(requested_device_name):
     print("===> Determining device...")
     if requested_device_name == 'cuda':
@@ -75,6 +84,7 @@ def determine_device(requested_device_name):
     return device
 
 
+# load a model from a previous training run
 def load_checkpoint(model, optimizer, filename):
     if (filename == ''):
         print("=> No checkpoint path specified!")
@@ -84,10 +94,10 @@ def load_checkpoint(model, optimizer, filename):
     return (checkpoint['epoch'] + 1), checkpoint['best_loss']
 
 
+# run the pipeline
 def main():
     args = parser.parse_args()
 
-    # build appropriate model
     print('===> Building model...')
     model, default_checkpoint = build_model(args.model, args.batch_size)
     total_params = sum(p.numel() for p in model.parameters())
@@ -100,10 +110,9 @@ def main():
     optim = build_optim(args.optim, model, args.lr)
     scoring_fn = cosine_similarity
 
-    # load pre-trained checkpoint, if specified
     start = 0
     best_loss = np.Inf
-    if (args.load): # model needs to be loaded to the same device it was saved from
+    if (args.load):
         print('===> Loading checkpoint...')
         start, best_loss = load_checkpoint(model, optim, args.checkpoint)
         print("=> Loaded!")
@@ -135,6 +144,7 @@ def main():
             checkpoint = default_checkpoint
         else:
             checkpoint = args.checkpoint
+        print("=> Checkpoint file:", checkpoint)
         
         train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
               num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss,
