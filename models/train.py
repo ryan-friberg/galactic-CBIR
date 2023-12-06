@@ -7,20 +7,12 @@ from tqdm import tqdm
 
 '''
 Defines the model-agnostic training and testing processes
-
-TODO: it is a design decision about how many images in the batch we transform
-      and how many transforms we apply at a time, we can do analyze what makes
-      the most sense from a training time/ performance perspective. Having every
-      image get into a pair effectively doubles the dataset size (which was
-      already pretty massive) and this is on top of associating each color channel
-      as a unique image in the transformer case. We will just need to be mindful
-      of the training runtimes.
 '''
 
 # torchvision surprisingly does not have a built in noise-adding transform
 class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=1.):
-        self.std = std
+    def __init__(self, mean, std):
+        self.std = np.random.uniform(0, std)
         self.mean = mean
         
     def __call__(self, tensor):
@@ -40,7 +32,7 @@ def generate_positive_pairs(batch, indices, num_augmentations):
         transforms.RandomRotation(180),
         transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        AddGaussianNoise(0., 0.1)
+        AddGaussianNoise(0., 0.05)
     ])
     
     positive_pairs = []
@@ -66,10 +58,10 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
         transforms.RandomVerticalFlip(1.0),
         transforms.RandomRotation(180),
         transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
-        transforms.RandomErasing(p=1.0, scale=(0.1, 0.1), ratio=(0.3, 3.3), value='random'),
+        transforms.RandomErasing(p=1.0, scale=(0.02, 0.1), ratio=(0.3, 3.3), value='random'),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
         transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.2)),
-        AddGaussianNoise(0., 2.0)
+        AddGaussianNoise(0., 0.05)
     ])
 
     negative_pairs = []
@@ -82,14 +74,14 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
         while not found:
             neg_idx = np.random.randint(0, len(dataset))
             if neg_idx != image_idx:
-                negative_associated_image = dataset[neg_idx]
+                negative_associated_image = dataset[neg_idx][0]
                 found = True
 
         random_transforms = transforms.Compose(
             np.random.choice(negative_transform_options, size=num_augmentations, replace=False)
         )
-        negative_associated_image = random_transforms(unaltered_image)
-        
+
+        negative_associated_image = random_transforms(negative_associated_image)
         negative_pairs.append((unaltered_image, negative_associated_image))
     
     return negative_pairs
