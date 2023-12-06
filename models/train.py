@@ -43,7 +43,8 @@ def generate_positive_pairs(batch, indices, num_augmentations):
         )
 
         unaltered_image = batch[idx]
-        positive_associated_image = random_transforms(unaltered_image)
+        # positive_associated_image = random_transforms(unaltered_image)
+        positive_associated_image = unaltered_image
         positive_pairs.append((unaltered_image, positive_associated_image))
     
     return positive_pairs
@@ -81,7 +82,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
             np.random.choice(negative_transform_options, size=num_augmentations, replace=False)
         )
 
-        negative_associated_image = random_transforms(negative_associated_image)
+        negative_associated_image = random_transforms(negative_associated_image).to(unaltered_image.device)
         negative_pairs.append((unaltered_image, negative_associated_image))
     
     return negative_pairs
@@ -109,7 +110,7 @@ def contrastive_loss(scoring_fn, output1, output2, target_labels, margin=1.0):
     return similarity_score, loss
 
 
-def test(model, test_loader, test_dataset, num_augmentations, scoring_fn, device):
+def test(model, test_loader, test_dataset, scoring_fn, device):
     # test should likely run inference with query image, and save an image in a designated
     # directory that has the query image and the top-k similar images
 
@@ -120,7 +121,7 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn, device
         for batch, labels in tqdm(test_loader, total=len(test_loader)):
             batch, labels = batch.to(device), labels.to(device)
             # select the first element of the batch to generate the positive pair
-            query_pair = generate_positive_pairs(batch, [0], num_augmentations)
+            query_pair = generate_positive_pairs(batch, [0], 1)
             
             # make a pair of the first batch image with each other image, first pair is positive
             test_pairs = query_pair + [(batch[0], img) for img in batch[1:]]
@@ -153,7 +154,7 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn, device
 
 # this function is the loose placeholder logic
 def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=0, 
-          num_epochs=10, num_augmentations=3, validate_interval=2, best_loss=np.Inf, checkpoint_filename='best_model.pt'):
+          num_epochs=10, num_augmentations=3, validate_interval=1, best_loss=np.Inf, checkpoint_filename='best_model.pt'):
 
     val_losses, val_loose_accs = [], []
     model.train()
@@ -193,7 +194,7 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
         elapsed_time = end - start
 
         if ((epoch % validate_interval) == 0):
-            val_loss, val_loose_acc = test(model, val_loader, val_dataset, num_augmentations, scoring_fn, device)
+            val_loss, val_loose_acc = test(model, val_loader, val_dataset, scoring_fn, device)
             print("Epoch %d - Runtime: %.1fs - Val Loss: %.3f - Val Loose Acc: %.3f" % (epoch, elapsed_time, val_loss, val_loose_acc))
 
             val_losses.append(val_loss)

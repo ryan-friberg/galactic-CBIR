@@ -1,5 +1,6 @@
 from PIL import Image
 import os
+from tqdm import tqdm 
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms.functional import to_pil_image
@@ -21,17 +22,13 @@ class SearchDataset(Dataset):
         if extract_features:
             self.extract_and_save_features(model, associated_dataset)
         
-        self.image_files, self.tensor_files = self.get_filenames(self.data_dir)
-        self.num_files = len(self.image_files)
+        self.image_dirs, self.tensor_files = self.get_filenames()
+        self.num_files = len(self.image_dirs)
 
     def __getitem__(self, idx):
-        # returns a tuple of the PIL image (for visualization) and torch feature tensor
-        try:
-            image = Image.open(self.image_files[idx]).convert('RGB')
-            features = torch.load(self.features_files, map_location=self.device)
-            return image, features
-        except:
-            return None
+        dir = self.image_dirs[idx]
+        features = torch.load(self.tensor_files, map_location=self.device)
+        return dir, features
 
     def __len__(self):
         return self.num_files
@@ -40,7 +37,10 @@ class SearchDataset(Dataset):
         model.eval()
         loader = DataLoader(associated_dataset, batch_size=1, shuffle=False)        
         
-        for i, img_tensor, labels in enumerate(loader):
+        i = 0
+        for img_tensor, labels in tqdm(loader):
+            img_tensor, labels = img_tensor.to(self.device), labels.to(self.device)
+           
             # define file structure/names
             pair_dir = os.path.join(self.data_dir, str(int(i)))
             img_file = os.path.join(pair_dir, 'img.jpg')
@@ -50,15 +50,16 @@ class SearchDataset(Dataset):
                 os.mkdir(pair_dir)
             
             # get image/features
-            img = to_pil_image(img_tensor)
+            img = to_pil_image(img_tensor.squeeze(0))
             feature_tensor = model(img_tensor)
             
             # save to filesystem
             img.save(img_file)
             torch.save(feature_tensor, features_file)
+            i += 1
 
     def get_filenames(self):
-        image_files   = []
+        image_dirs   = []
         tensor_files = []
 
         pair_dirs = os.listdir(self.data_dir)
@@ -66,7 +67,7 @@ class SearchDataset(Dataset):
             dir = os.path.join(self.data_dir, dir)
             img_file = os.path.join(dir, 'img.jpg')
             features_file = os.path.join(dir, 'features.pt')
-            image_files.append(img_file)
+            image_dirs.append(dir)
             tensor_files.append(features_file)
 
-        return image_files, tensor_files
+        return image_dirs, tensor_files

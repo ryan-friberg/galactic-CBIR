@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 import torch
 import torchvision.transforms as transforms
-from search.search import cosine_similarity, search
+from search.search import scoring_function, search, save_search_results
 from search.search_dataset import SearchDataset
 from torch.utils.data import DataLoader, random_split
 from data.dataset import GalaxyCBRDataSet, collate_fn
@@ -17,26 +17,27 @@ and/or load all the necessary components to train/test a machine learning model 
 
 # define CLI arugments, add more as needed
 parser = argparse.ArgumentParser(description='Content-based image retrieval pipeline')
-parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
 parser.add_argument('--device', default='cuda', type=str, help='cpu or cuda')
 parser.add_argument('--optim', default='adam', type=str, help='training optimizer: sgd, sgd_nest, adagrad, adadelta, or adam')
-parser.add_argument('--num_workers', default=1, type=int, help='number of workers')
+parser.add_argument('--num_workers', default=4, type=int, help='number of workers')
 parser.add_argument('--train_split', default=0.8, type=float, help='percentage of dataset to be used for training')
-parser.add_argument('--epochs', default=5, type=int, help='numper of training epochs')
+parser.add_argument('--epochs', default=15, type=int, help='numper of training epochs')
 parser.add_argument('--batch_size', default=8, type=int, help='size of batch')
 parser.add_argument('--checkpoint', default='', type=str, help='model checkpoint path')
 parser.add_argument('--load', action='store_true', help='load from the given checkpoint')
 parser.add_argument('--model', default='transformer', type=str, help='select which model architecture')
-parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of data files')
+parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of image data files')
 parser.add_argument('--train', action='store_true', help='train model')
 parser.add_argument('--test', action='store_true', help='test model')
+parser.add_argument('--validate_interval', default=1, type=int, help='how often to run validation during training')
 parser.add_argument('--force_download', action='store_true', help='rebuild dataset filesytem')
 parser.add_argument('--h5_file', default='', type=str, help='location of data source file')
-parser.add_argument('--num_augmentations', default=3, type=int, help='number of augmentations during training')
+parser.add_argument('--num_augmentations', default=1, type=int, help='number of augmentations during training')
 parser.add_argument('--build_search', action='store_true', help='pre-compute the search database to save on inference time')
 parser.add_argument('--search', action='store_true', help='run search with a query image and model checkpoint')
 parser.add_argument('--query_image', default='', type=str, help='search query image filename')
-parser.add_argument('--search_data_dir', default='', type=str, help='directory of search data files')
+parser.add_argument('--search_data_dir', default='./search/data', type=str, help='directory of search data files')
 parser.add_argument('--search_output', default='./search/results.txt', type=str, help='output file for search results')
 parser.add_argument('--k', default=3, type=int, help='number of search results to return')
 
@@ -108,7 +109,7 @@ def main():
 
     print("===> Building optimizer...")
     optim = build_optim(args.optim, model, args.lr)
-    scoring_fn = cosine_similarity
+    scoring_fn = scoring_function
 
     start = 0
     best_loss = np.Inf
@@ -137,7 +138,7 @@ def main():
 
     if (args.test):
         print("===> Testing...")
-        test(model, test_loader, args.num_augmentations, scoring_fn, device)
+        test(model, test_loader, test_dataset, scoring_fn, device)
     if (args.train):
         print("===> Training...")
         if (args.checkpoint == ''):
@@ -147,8 +148,8 @@ def main():
         print("=> Checkpoint file:", checkpoint)
         
         train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
-              num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss,
-              checkpoint_filename=checkpoint)
+              num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=args.validate_interval, 
+              best_loss=best_loss, checkpoint_filename=checkpoint)
         print("=> Training complete!")
 
         # reload the best performing model
@@ -161,7 +162,7 @@ def main():
                 return -1
             else:
                 # load the best model (as it would not have happened earlier)
-                start, best_loss = load_checkpoint(model, optim, checkpoint)
+                start, best_loss = load_checkpoint(model, optim, args.checkpoint)
 
         search_dataset = SearchDataset(args.search_data_dir, model, galaxy_dataset, device, extract_features=True)
         print("=> Search dataset build complete!")
@@ -176,18 +177,15 @@ def main():
                 return -1
             else:
                 # load the best model (as it would not have happened earlier)
-                start, best_loss = load_checkpoint(model, optim, checkpoint)
+                start, best_loss = load_checkpoint(model, optim, args.checkpoint)
 
         search_dataset = SearchDataset(args.search_data_dir, model, galaxy_dataset, device, extract_features=False)
-        search_loader  = DataLoader(search_dataset, batch_size=1, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
-        top_k = search(search_loader, model, scoring_fn, args.query_image, k=args.k)
+        top_k = search(search_dataset, model, scoring_fn, args.query_image, device, k=args.k)
 
         print("=> Top %d closest images found, saving to %s..." % (args.k, args.search_output))
-        with open(args.search_output, 'w') as file:
-            file.write(f"{args.query_image}\n")
-            for img_file in top_k:
-                file.write(f"{img_file}\n")
-    print("===> Pipeline completed!")
+        save_search_results(args.search_output, args.query_image, top_k)
+
+    print("===> Pipeline run completed!")
     return 0
 
 
