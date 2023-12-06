@@ -1,6 +1,7 @@
-import matplotlib.pyplot as plt
-import torch
+import numpy as np
+from PIL import Image
 import torch.nn.functional as F
+from torchvision.transforms import ToTensor
 
 '''
 This file defines the process by which visual search happens. This includes
@@ -14,37 +15,31 @@ def cosine_similarity(features1, features2):
 def euclidean_distance(features1, features2, keepdim=True):
     return F.pairwise_distance(features1, features2, keepdim=keepdim)
 
+def search(dataloader, model, scoring_fn, query_img_file, k=3):
+    to_tensor = ToTensor()
+    model.eval()
 
-def get_top_k_indices(query_features, all_features, k):
-    # Compute similarity scores between query features and all features
-    similarities = cosine_similarity(query_features.unsqueeze(0), all_features)
-    # Find top-k indices based on similarity scores
-    _, top_k_indices = torch.topk(similarities, k, largest=True)
-    return top_k_indices
+    # create batch out of the query image and extract query features
+    query_batch = to_tensor(Image.open(query_img_file)).unsqueeze(0)
+    query_features = model(query_batch)
+    
+    best_k = np.array([])
+    best_imgs = np.array([])
+    for img_file, feature_tensor in dataloader:
+        sim_score = scoring_fn(query_features, feature_tensor)
+        if (best_k < k):
+            best_k = np.append(best_k, sim_score)
+            best_imgs = np.append(best_imgs, img_file)
 
-
-def retrieve_images(dataset, indices):
-    # Fetch images from the dataset based on indices
-    images = [dataset[idx] for idx in indices]
-    return images
-
-
-def save_query_and_similar_images(query_image, similar_images, save_path, file_name):
-    # TODO: this function assumes that 
-    # query_image and similar_images are PIL images or tensors that can be converted to PIL images
-    fig, axs = plt.subplots(1, len(similar_images) + 1, figsize=(15, 5))
-    axs[0].imshow(query_image.permute(1, 2, 0))  # Convert tensor to image
-    axs[0].set_title("Query Image")
-    axs[0].axis('off')
-
-    for i, img in enumerate(similar_images):
-        axs[i + 1].imshow(img.permute(1, 2, 0))  # Convert tensor to image
-        axs[i + 1].set_title(f"Similar {i+1}")
-        axs[i + 1].axis('off')
-
-    plt.savefig(f"{save_path}/{file_name}")
-    plt.close()
-
-
-def search_dataset(features_dataset, model):
-    pass
+            sort_indices = np.argsort(best_k)
+            best_k = best_k[sort_indices]
+            best_imgs = best_imgs[sort_indices]
+        elif (sim_score < best_k[-1]):
+            best_k[-1] = sim_score
+            best_imgs[-1] = img_file
+            
+            sort_indices = np.argsort(best_k)
+            best_k = best_k[sort_indices]
+            best_imgs = best_imgs[sort_indices]
+    
+    return best_imgs
