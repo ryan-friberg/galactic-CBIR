@@ -49,7 +49,7 @@ def build_model(arch_name, batch_size=None):
     if (arch_name == 'transformer'):
         print("=> Transformer")
         model = FeatureExtractorViT((batch_size, 3, 224, 224))
-        default_checkpoint = 'best_transformer.pt'
+        default_checkpoint = './model_checkpoints/best_transformer.pt'
     return model, default_checkpoint
 
 
@@ -118,14 +118,14 @@ def main():
         start, best_loss = load_checkpoint(model, optim, args.checkpoint)
         print("=> Loaded!")
 
-    print("===> Building dataset and dataloaders...")
+    print("===> Building image dataset and dataloaders...")
     data_transforms = transforms.ToTensor()
     galaxy_dataset = GalaxyCBRDataSet(args.data_dir, data_transforms, force_download=args.force_download, h5_file=args.h5_file)
 
     train_size = int(args.train_split * len(galaxy_dataset))
     test_size  = int((len(galaxy_dataset) - train_size) / 2)
     val_size   = (len(galaxy_dataset) - train_size - test_size)
-    print("=> train size: %d, test size: %d, val_size: %d" % (train_size, test_size, val_size))
+    print("=> Image datasets built: train size: %d, test size: %d, val_size: %d" % (train_size, test_size, val_size))
 
     train_dataset, test_dataset, val_dataset = random_split(galaxy_dataset,[train_size, test_size, val_size])
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,  num_workers=args.num_workers, collate_fn=collate_fn)
@@ -167,7 +167,6 @@ def main():
         search_dataset = SearchDataset(args.search_data_dir, model, galaxy_dataset, device, extract_features=True)
         print("=> Search dataset build complete!")
     if (args.search):
-        print("===> Searching...")
         if ((args.query_image == '') or (args.search_data_dir == '')):
             print("=> No query image and/or search dataset directory specified!")
             return -1
@@ -180,7 +179,9 @@ def main():
                 start, best_loss = load_checkpoint(model, optim, args.checkpoint)
 
         search_dataset = SearchDataset(args.search_data_dir, model, galaxy_dataset, device, extract_features=False)
-        top_k = search(search_dataset, model, scoring_fn, args.query_image, device, k=args.k)
+
+        print("===> Searching...")
+        top_k = search(search_dataset, galaxy_dataset, model, scoring_fn, args.query_image, device, k=args.k)
 
         print("=> Top %d closest images found, saving to %s..." % (args.k, args.search_output))
         save_search_results(args.search_output, args.query_image, top_k)

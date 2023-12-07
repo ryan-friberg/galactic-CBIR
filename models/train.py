@@ -9,15 +9,21 @@ from tqdm import tqdm
 Defines the model-agnostic training and testing processes
 '''
 
+
 # torchvision surprisingly does not have a built in noise-adding transform
 class AddGaussianNoise(object):
-    def __init__(self, mean, std):
-        self.std = np.random.uniform(0, std)
+    def __init__(self, mean, std, threshold=0.8):
+        self.std = std
+        # self.std = np.random.uniform(0, std)
         self.mean = mean
+        self.threshold = threshold
         
     def __call__(self, tensor):
         device = tensor.device
-        return tensor + (torch.randn(tensor.size()) * self.std + self.mean).to(device)
+        mask = tensor > self.threshold
+        noisy_tensor = tensor + (torch.randn(tensor.size()) * self.std + self.mean).to(device)
+        noisy_tensor[mask] = tensor[mask]
+        return noisy_tensor
     
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
@@ -32,7 +38,7 @@ def generate_positive_pairs(batch, indices, num_augmentations, print_transforms=
         transforms.RandomRotation(180),
         transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        AddGaussianNoise(0., 0.01)
+        AddGaussianNoise(0., 0.18)
     ])
     
     positive_pairs = []
@@ -64,7 +70,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset, 
         transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
         transforms.RandomErasing(p=1.0, scale=(0.02, 0.1), ratio=(0.3, 3.3), value='random'),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.2)),
+        transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.4)),
         AddGaussianNoise(0., 0.01)
     ])
 
@@ -142,7 +148,7 @@ def test(model, test_loader, test_dataset, scoring_fn, device):
 
             # get the contrastive loss between the elements in the batch (individually to get sim scores)
             closest_idx = -1
-            closest_score = np.Inf
+            closest_score = 0
             for i, pair in enumerate(test_pairs):
                 output1 = model(pair[0].unsqueeze(0))
                 output2 = model(pair[1].unsqueeze(0))
@@ -166,7 +172,6 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
     val_losses, val_loose_accs = [], []
     model.train()
     for epoch in range(start_epoch, start_epoch + num_epochs):
-        start = time.time()
         for batch, labels in tqdm(train_loader, total=len(train_loader)):            
             batch, labels = batch.to(device), labels.to(device)
 
@@ -197,12 +202,9 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
             loss.backward()
             optim.step()
 
-        end = time.time()
-        elapsed_time = end - start
-
         if ((epoch % validate_interval) == 0):
             val_loss, val_loose_acc = test(model, val_loader, val_dataset, scoring_fn, device)
-            print("Epoch %d - Runtime: %.1fs - Val Loss: %.3f - Val Loose Acc: %.3f" % (epoch, elapsed_time, val_loss, val_loose_acc))
+            print("Epoch %d - Val Loss: %.3f - Val Loose Acc: %.3f" % (epoch, val_loss, val_loose_acc))
 
             val_losses.append(val_loss)
             val_loose_accs.append(val_loose_accs)

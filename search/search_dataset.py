@@ -1,4 +1,4 @@
-from PIL import Image
+import numpy as np
 import os
 from tqdm import tqdm 
 import torch
@@ -12,7 +12,7 @@ this dataset is to speed up search by removing search-time model inference
 '''
 
 class SearchDataset(Dataset):
-    def __init__(self, data_dir, model, associated_dataset, device, extract_features=True):
+    def __init__(self, data_dir, model, associated_dataset, device, extract_features=False):
         self.data_dir = data_dir
         self.device = device
 
@@ -22,52 +22,41 @@ class SearchDataset(Dataset):
         if extract_features:
             self.extract_and_save_features(model, associated_dataset)
         
-        self.image_files, self.tensor_files = self.get_filenames()
-        self.num_files = len(self.image_files)
+        galaxy_dataset_indices, tensor_files = self.get_filenames()
+        self.galaxy_dataset_indices = np.array(galaxy_dataset_indices)
+        self.tensor_files = np.array(tensor_files)
+        self.num_files = len(self.galaxy_dataset_indices)
 
     def __getitem__(self, idx):
-        dir = self.image_files[idx]
+        galaxy_idx = self.galaxy_dataset_indices[idx]
         features = torch.load(self.tensor_files[idx], map_location=self.device)
-        return dir, features
+        return galaxy_idx, features
 
     def __len__(self):
         return self.num_files
 
     def extract_and_save_features(self, model, associated_dataset):
-        model.eval()
-        loader = DataLoader(associated_dataset, batch_size=1, shuffle=False)        
-        
-        i = 0
-        for img_tensor, labels in tqdm(loader):
-            img_tensor, labels = img_tensor.to(self.device), labels.to(self.device)
-           
+        model.eval()    
+    
+        for idx in tqdm(range(len(associated_dataset))):
+            img_tensor, labels = associated_dataset[idx]
+            img_tensor = img_tensor.unsqueeze(0).to(self.device)
+
             # define file structure/names
-            pair_dir = os.path.join(self.data_dir, str(int(i)))
-            img_file = os.path.join(pair_dir, 'img.jpg')
-            features_file = os.path.join(pair_dir, 'features.pt')
-            
-            if (not os.path.exists(pair_dir)):
-                os.mkdir(pair_dir)
+            tensor_file = os.path.join(self.data_dir, str(int(idx)) + '_features.pt')
             
             # get image/features
-            img = to_pil_image(img_tensor.squeeze(0))
             feature_tensor = model(img_tensor)
-            
-            # save to filesystem
-            img.save(img_file)
-            torch.save(feature_tensor, features_file)
-            i += 1
+            torch.save(feature_tensor, tensor_file)
 
     def get_filenames(self):
-        image_files   = []
+        galaxy_dataset_indices = []
         tensor_files = []
 
-        pair_dirs = os.listdir(self.data_dir)
-        for dir in pair_dirs:
-            dir = os.path.join(self.data_dir, dir)
-            img_file = os.path.join(dir, 'img.jpg')
-            features_file = os.path.join(dir, 'features.pt')
-            image_files.append(img_file)
-            tensor_files.append(features_file)
+        files = os.listdir(self.data_dir)
+        for i, file in enumerate(files):
+            file = os.path.join(self.data_dir, file)
+            galaxy_dataset_indices.append(i)
+            tensor_files.append(file)
 
-        return image_files, tensor_files
+        return galaxy_dataset_indices, tensor_files
