@@ -7,7 +7,8 @@ The main.py file allow for CLI training, testing, and/or searching as well as sp
 Examples:
 ```rb
 python3 main.py --force_download --train
-python3 main.py --search --query_image [path-to-image] --search_database [path-to-search-parent-dir]
+python3 main.py --build_search --checkpoint [path-to-trained-model-checkpoint]
+python3 main.py --search --query_image [path-to-image] --search_database [path-to-search-parent-dir] --checkpoint [path-to-checkpoint]
 ```
 
 PLEASE NOTE: The python package astroNN seems to be unsupported for Apple silicon silicon computers. If this affects you, please download the .h5 file from the website manually and pass the file path to main.py via --h5_file to build the dataset instead.
