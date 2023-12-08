@@ -16,7 +16,7 @@ class FeatureExtractorViT(nn.Module):
     # n_patches is number of patches along a dimension
     def __init__(self, batch_shape, n_patches=14, hidden_size=1024, num_blocks=3, num_heads=4, output_feature_size=2048):
         super(FeatureExtractorViT, self).__init__()
-        assert (batch_shape[1:] == (3,224,224)) # the econding works only for specific image shape
+        assert (batch_shape[2:] == (224,224)) # the econding works only for specific image shape
         
         ### assign class variables
         self.shape = batch_shape

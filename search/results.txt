@@ -1,0 +1,4 @@
+./data/galaxy_dataset/2/49.jpg
+./data/galaxy_dataset/2/786.jpg
+./data/galaxy_dataset/8/137.jpg
+./data/galaxy_dataset/7/866.jpg

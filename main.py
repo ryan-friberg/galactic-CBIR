@@ -26,6 +26,7 @@ parser.add_argument('--epochs', default=15, type=int, help='numper of training e
 parser.add_argument('--batch_size', default=8, type=int, help='size of batch')
 parser.add_argument('--checkpoint', default='', type=str, help='model checkpoint path')
 parser.add_argument('--load', action='store_true', help='load from the given checkpoint')
+parser.add_argument('--grayscale', action='store_true', help='grayscale the dataset images')
 parser.add_argument('--model', default='transformer', type=str, help='select which model architecture')
 parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of image data files')
 parser.add_argument('--train', action='store_true', help='train model')
@@ -40,15 +41,20 @@ parser.add_argument('--query_image', default='', type=str, help='search query im
 parser.add_argument('--search_data_dir', default='./search/data', type=str, help='directory of search data files')
 parser.add_argument('--search_output', default='./search/results.txt', type=str, help='output file for search results')
 parser.add_argument('--k', default=3, type=int, help='number of search results to return')
+parser.add_argument('--save_computations', action='store_true', help='make fewer pairs per batch')
 
 
 # create the model given CLI arguments (only really useful when more than one model type is available)
-def build_model(arch_name, batch_size=None):
+def build_model(arch_name, batch_size=None, grayscale=False):
     model = None
     default_checkpoint = None
     if (arch_name == 'transformer'):
         print("=> Transformer")
-        model = FeatureExtractorViT((batch_size, 3, 224, 224))
+        if grayscale:
+            model = FeatureExtractorViT((batch_size, 1, 224, 224))
+        else:
+            model = FeatureExtractorViT((batch_size, 3, 224, 224))
+       
         default_checkpoint = './model_checkpoints/best_transformer.pt'
     return model, default_checkpoint
 
@@ -100,7 +106,7 @@ def main():
     args = parser.parse_args()
 
     print('===> Building model...')
-    model, default_checkpoint = build_model(args.model, args.batch_size)
+    model, default_checkpoint = build_model(args.model, args.batch_size, args.grayscale)
     total_params = sum(p.numel() for p in model.parameters())
     print("=> Model parameter count:", total_params)
 
@@ -120,6 +126,10 @@ def main():
 
     print("===> Building image dataset and dataloaders...")
     data_transforms = transforms.ToTensor()
+    if args.grayscale:
+        data_transforms = transforms.Compose([transforms.Grayscale(),
+                                              transforms.ToTensor()])
+    
     galaxy_dataset = GalaxyCBRDataSet(args.data_dir, data_transforms, force_download=args.force_download, h5_file=args.h5_file)
 
     train_size = int(args.train_split * len(galaxy_dataset))
@@ -138,7 +148,8 @@ def main():
 
     if (args.test):
         print("===> Testing...")
-        test(model, test_loader, test_dataset, scoring_fn, device)
+        test_loss, test_loose_acc = test(model, test_loader, test_dataset, scoring_fn, device)
+        print("=> Test Loss: %.3f - Test Loose Accuracy: %.3f" % (test_loss, test_loose_acc))
     if (args.train):
         print("===> Training...")
         if (args.checkpoint == ''):
@@ -147,9 +158,11 @@ def main():
             checkpoint = args.checkpoint
         print("=> Checkpoint file:", checkpoint)
         
-        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
-              num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=args.validate_interval, 
-              best_loss=best_loss, checkpoint_filename=checkpoint)
+        val_losses, val_loose_accs = train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
+                                            num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=args.validate_interval, 
+                                            best_loss=best_loss, checkpoint_filename=checkpoint, save_computations=args.save_computations)
+        print("=> Validation Losses:", val_losses)
+        print("=> Validation Loose Accuracies:", val_loose_accs)
         print("=> Training complete!")
 
         # reload the best performing model

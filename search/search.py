@@ -13,10 +13,10 @@ the similarity scoring methodolody, and the actual querying on the dataset.
 
 # the chosen scoring function to be used during training
 def similarity_scoring_function(features1, features2):
-    cosine_sim = torch.mean(F.cosine_similarity(features1, features2, dim=1))
-    l2_dist    = torch.mean(F.pairwise_distance(features1, features2, p=2))
-    minkowsi   = torch.mean(F.pairwise_distance(features1, features2, p=2))
-    similarity_score =  cosine_sim + (1 / (1 + l2_dist)) + (1 / (1 + minkowsi))
+    cosine_sim = F.cosine_similarity(features1, features2, dim=1).mean(1)
+    l2_dist    = F.pairwise_distance(features1, features2, p=2).mean(1)
+    minkowsi   = F.pairwise_distance(features1, features2, p=2).mean(1)
+    similarity_score =  ((1/3)*cosine_sim) + ((1/3)*(1 / (1 + l2_dist))) + ((1/3)*(1 / (1 + minkowsi)))
     return similarity_score
 
 
